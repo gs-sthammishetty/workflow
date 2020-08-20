@@ -25,10 +25,12 @@ import com.nirmata.workflow.details.WorkflowManagerImpl;
 import com.nirmata.workflow.executor.TaskExecutor;
 import com.nirmata.workflow.models.TaskType;
 import com.nirmata.workflow.queue.QueueFactory;
+import com.nirmata.workflow.queue.zookeeper.MultiQueueInfo;
 import com.nirmata.workflow.queue.zookeeper.ZooKeeperSimpleQueueFactory;
 import com.nirmata.workflow.serialization.Serializer;
 import com.nirmata.workflow.serialization.StandardSerializer;
 import org.apache.curator.framework.CuratorFramework;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -46,6 +48,7 @@ public class WorkflowManagerBuilder
     private AutoCleanerHolder autoCleanerHolder = newNullHolder();
     private Serializer serializer = new StandardSerializer();
     private Executor taskRunnerService = MoreExecutors.sameThreadExecutor();
+    private MultiQueueInfo multiQueueInfo;
 
     private final List<TaskExecutorSpec> specs = Lists.newArrayList();
 
@@ -66,9 +69,9 @@ public class WorkflowManagerBuilder
      * and version combine to create a unique workflow. All instances using the same namespace and version
      * are logically part of the same workflow.
      *
-     * @param curator Curator instance
+     * @param curator   Curator instance
      * @param namespace workflow namespace
-     * @param version workflow version
+     * @param version   workflow version
      * @return this (for chaining)
      */
     public WorkflowManagerBuilder withCurator(CuratorFramework curator, String namespace, String version)
@@ -104,8 +107,8 @@ public class WorkflowManagerBuilder
      * </p>
      *
      * @param taskExecutor the executor
-     * @param qty the number of instances for this pool
-     * @param taskType task type
+     * @param qty          the number of instances for this pool
+     * @param taskType     task type
      * @return this (for chaining)
      */
     public WorkflowManagerBuilder addingTaskExecutor(TaskExecutor taskExecutor, int qty, TaskType taskType)
@@ -139,10 +142,23 @@ public class WorkflowManagerBuilder
      *
      * @return new WorkflowManager
      */
-    public WorkflowManager build()
-    {
-        return new WorkflowManagerImpl(curator, queueFactory, instanceName, specs, autoCleanerHolder, serializer, taskRunnerService);
+    public WorkflowManager build() {
+        if (multiQueueInfo == null) {
+            return new WorkflowManagerImpl(curator, queueFactory, instanceName, specs, autoCleanerHolder, serializer, taskRunnerService,false);
+        } else {
+            //TODO need to validate multiQueryInfo
+            //taskRunner, primaryTaskType, secondaryTaskType mandatory
+            return new WorkflowManagerImpl(curator, queueFactory, instanceName, specs, autoCleanerHolder, serializer, taskRunnerService, multiQueueInfo);
+        }
+
     }
+
+
+    public WorkflowManagerBuilder withMutiQueueInfo(MultiQueueInfo mutiQueryInfo) {
+        this.multiQueueInfo = Preconditions.checkNotNull(mutiQueryInfo, "multiQueueInfo cannot be null");
+        return this;
+    }
+
 
     /**
      * <em>optional</em><br>
@@ -163,7 +179,7 @@ public class WorkflowManagerBuilder
      * IMPORTANT: the auto cleaner will only run on the instance that is the current scheduler.
      *
      * @param autoCleaner the auto cleaner to use
-     * @param runPeriod how often to run
+     * @param runPeriod   how often to run
      * @return this (for chaining)
      */
     public WorkflowManagerBuilder withAutoCleaner(AutoCleaner autoCleaner, Duration runPeriod)
